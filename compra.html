@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Finalizar compra — ConstrutoMAX</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="compra.css">
+</head>
+<body>
+
+<header class="co-header">
+  <div class="wrap co-header-inner">
+    <a href="index.html" class="logo" aria-label="ConstrutoMAX — voltar para a loja">
+      <span class="logo-mark" aria-hidden="true"></span>
+      ConstrutoMAX
+    </a>
+    <a href="index.html" class="back-link">&larr; Continuar comprando</a>
+  </div>
+</header>
+
+<main class="co-main">
+  <div class="wrap">
+    <h1 class="co-title">Finalizar compra</h1>
+    <p class="co-sub">Confira os itens, informe seus dados e escolha a forma de pagamento.</p>
+
+    <!-- Carrinho vazio -->
+    <section class="co-card co-state" id="estadoVazio" hidden>
+      <h2>Seu carrinho está vazio</h2>
+      <p>Volte para a loja, adicione produtos ao orçamento e clique em “Enviar para orçamento”.</p>
+      <a href="index.html#produtos" class="btn btn-primary btn-lg">Ver produtos</a>
+    </section>
+
+    <!-- Pedido enviado -->
+    <section class="co-card co-state ok" id="estadoOk" hidden>
+      <h2>Pedido enviado!</h2>
+      <p id="okMsg">Recebemos seu pedido. Nossa equipe entra em contato em até 2 horas úteis.</p>
+      <a href="index.html" class="btn btn-primary btn-lg">Voltar para a loja</a>
+    </section>
+
+    <!-- Compra -->
+    <div class="co-grid" id="compraGrid" hidden>
+
+      <section class="co-card">
+        <h2>Seus dados</h2>
+        <form class="co-form" id="compraForm" novalidate>
+          <div class="form-row">
+            <label for="nome">Nome</label>
+            <input type="text" id="nome" name="nome" autocomplete="name" maxlength="120" required>
+          </div>
+          <div class="form-row">
+            <label for="whatsapp">WhatsApp</label>
+            <input type="tel" id="whatsapp" name="whatsapp" autocomplete="tel" placeholder="(85) 90000-0000" required>
+          </div>
+          <div class="form-row">
+            <label for="obs">Observações <span class="opt">(opcional)</span></label>
+            <textarea id="obs" name="obs" rows="3" maxlength="1500" placeholder="Ex: endereço de entrega, horário de preferência"></textarea>
+          </div>
+
+          <div class="pay-group" id="payGroup" role="radiogroup" aria-labelledby="payLabel">
+            <span class="pay-title" id="payLabel">Forma de pagamento</span>
+            <div class="pay-options">
+              <label class="pay-opt"><input type="radio" name="pagamento" value="pix"><span>Pix</span></label>
+              <label class="pay-opt"><input type="radio" name="pagamento" value="cartao"><span>Cartão</span></label>
+              <label class="pay-opt"><input type="radio" name="pagamento" value="boleto"><span>Boleto</span></label>
+              <label class="pay-opt"><input type="radio" name="pagamento" value="faturado"><span>Faturado (PJ)</span></label>
+            </div>
+          </div>
+
+          <button type="submit" class="btn btn-primary btn-lg" id="btnEnviar">Finalizar pedido</button>
+          <p class="form-status" id="formStatus" role="status" aria-live="polite"></p>
+        </form>
+      </section>
+
+      <aside class="co-card co-summary" aria-label="Resumo do pedido">
+        <h2>Resumo do pedido</h2>
+        <ul class="sum-items" id="sumItems"></ul>
+        <div class="sum-total">
+          <span>Total estimado</span>
+          <strong id="sumTotal">R$ 0,00</strong>
+        </div>
+        <p class="sum-note">Valor de referência. O preço final é confirmado por um vendedor.</p>
+      </aside>
+
+    </div>
+  </div>
+</main>
+
+<script>
+(function () {
+  'use strict';
+
+  var CHAVE = 'construtomax_carrinho';
+
+  var estadoVazio = document.getElementById('estadoVazio');
+  var estadoOk    = document.getElementById('estadoOk');
+  var okMsg       = document.getElementById('okMsg');
+  var grid        = document.getElementById('compraGrid');
+  var sumItems    = document.getElementById('sumItems');
+  var sumTotal    = document.getElementById('sumTotal');
+  var form        = document.getElementById('compraForm');
+  var formStatus  = document.getElementById('formStatus');
+  var btnEnviar   = document.getElementById('btnEnviar');
+  var payGroup    = document.getElementById('payGroup');
+
+  var cart = [];
+
+  function formatBRL(v) {
+    return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  }
+
+  function esc(t) {
+    var d = document.createElement('div');
+    d.textContent = String(t);
+    return d.innerHTML;
+  }
+
+  function carregar() {
+    try {
+      var raw = localStorage.getItem(CHAVE);
+      var arr = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(arr)) return [];
+      return arr.filter(function (i) {
+        return i && i.id && i.name && Number(i.qty) > 0 && Number(i.price) >= 0;
+      }).map(function (i) {
+        return { id: i.id, name: i.name, unit: i.unit || '', price: Number(i.price), qty: Math.floor(Number(i.qty)) };
+      });
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function salvar() {
+    try { localStorage.setItem(CHAVE, JSON.stringify(cart)); } catch (e) {}
+  }
+
+  function total() {
+    return cart.reduce(function (s, i) { return s + i.qty * i.price; }, 0);
+  }
+
+  function render() {
+    if (cart.length === 0) {
+      grid.hidden = true;
+      estadoVazio.hidden = false;
+      return;
+    }
+    estadoVazio.hidden = true;
+    grid.hidden = false;
+
+    sumItems.innerHTML = cart.map(function (i) {
+      return '<li class="sum-item" data-id="' + esc(i.id) + '">' +
+        '<div>' +
+          '<p class="sum-name">' + esc(i.name) + '</p>' +
+          '<p class="sum-unit">' + formatBRL(i.price) + ' / ' + esc(i.unit) + '</p>' +
+        '</div>' +
+        '<p class="sum-line">' + formatBRL(i.qty * i.price) + '</p>' +
+        '<div class="sum-controls">' +
+          '<div class="qty">' +
+            '<button type="button" data-act="menos" aria-label="Diminuir quantidade">&minus;</button>' +
+            '<span aria-live="polite">' + i.qty + '</span>' +
+            '<button type="button" data-act="mais" aria-label="Aumentar quantidade">+</button>' +
+          '</div>' +
+          '<button type="button" class="sum-remove" data-act="remover">Remover</button>' +
+        '</div>' +
+      '</li>';
+    }).join('');
+
+    sumTotal.textContent = formatBRL(total());
+  }
+
+  sumItems.addEventListener('click', function (e) {
+    var btn = e.target.closest('button[data-act]');
+    var row = e.target.closest('.sum-item');
+    if (!btn || !row) return;
+    var id = row.getAttribute('data-id');
+    var item = cart.find(function (i) { return String(i.id) === id; });
+    if (!item) return;
+
+    var act = btn.getAttribute('data-act');
+    if (act === 'mais') item.qty += 1;
+    if (act === 'menos') item.qty -= 1;
+    if (act === 'remover' || item.qty <= 0) {
+      cart = cart.filter(function (i) { return String(i.id) !== id; });
+    }
+    salvar();
+    render();
+  });
+
+  /* ---------- Preenche nome/WhatsApp se a pessoa estiver logada ---------- */
+  fetch('me.php', { credentials: 'same-origin' })
+    .then(function (r) { return r.json(); })
+    .then(function (res) {
+      if (!res || !res.ok || !res.user) return;
+      var nome = document.getElementById('nome');
+      var whats = document.getElementById('whatsapp');
+      if (nome && !nome.value && res.user.nome) nome.value = res.user.nome;
+      if (whats && !whats.value && res.user.whatsapp) whats.value = res.user.whatsapp;
+    })
+    .catch(function () {});
+
+  /* ---------- Envio do pedido (mesmo contrato do pedido.php) ---------- */
+  document.querySelectorAll('input[name="pagamento"]').forEach(function (r) {
+    r.addEventListener('change', function () { payGroup.classList.remove('invalid'); });
+  });
+
+  function setStatus(msg, erro) {
+    formStatus.textContent = msg || '';
+    formStatus.classList.toggle('error', !!erro);
+  }
+
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+
+    var nome = document.getElementById('nome');
+    var whats = document.getElementById('whatsapp');
+    var obs = document.getElementById('obs');
+    var pag = form.querySelector('input[name="pagamento"]:checked');
+    var valido = true;
+
+    [nome, whats].forEach(function (f) {
+      var vazio = f.value.trim() === '';
+      f.closest('.form-row').classList.toggle('invalid', vazio);
+      if (vazio) valido = false;
+    });
+    payGroup.classList.toggle('invalid', !pag);
+
+    if (!valido) { setStatus('Preencha seu nome e WhatsApp.', true); return; }
+    if (!pag)    { setStatus('Escolha a forma de pagamento.', true); return; }
+    if (cart.length === 0) { setStatus('Seu carrinho está vazio.', true); return; }
+
+    var linhas = cart.map(function (i) {
+      return '- ' + i.qty + 'x ' + i.name + ' (' + i.unit + ')';
+    });
+    var mensagem = 'Itens do pedido:\n' + linhas.join('\n');
+    if (obs.value.trim() !== '') mensagem += '\n\nObservações: ' + obs.value.trim();
+
+    var itens = cart.map(function (i) {
+      return { id: i.id, nome: i.name, unidade: i.unit, preco: i.price, qtd: i.qty };
+    });
+
+    btnEnviar.disabled = true;
+    setStatus('Enviando pedido…', false);
+
+    fetch('pedido.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({
+        nome: nome.value.trim(),
+        whatsapp: whats.value.trim(),
+        mensagem: mensagem,
+        pagamento: pag.value,
+        itens: itens
+      })
+    })
+    .then(function (r) {
+      return r.json().catch(function () {
+        return { ok: false, error: 'Resposta inválida do servidor.' };
+      }).then(function (data) {
+        if (!r.ok && !data.error) data.error = 'Erro no servidor (' + r.status + ').';
+        return data;
+      });
+    })
+    .then(function (res) {
+      btnEnviar.disabled = false;
+      if (!res.ok) {
+        setStatus(res.error || 'Não foi possível enviar o pedido. Tente novamente ou fale pelo WhatsApp.', true);
+        return;
+      }
+      try { localStorage.removeItem(CHAVE); } catch (e) {}
+      cart = [];
+      grid.hidden = true;
+      estadoVazio.hidden = true;
+      if (res.message) okMsg.textContent = res.message;
+      estadoOk.hidden = false;
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    })
+    .catch(function () {
+      btnEnviar.disabled = false;
+      setStatus('Falha de conexão. Tente novamente.', true);
+    });
+  });
+
+  cart = carregar();
+  render();
+})();
+</script>
+
+</body>
+</html>
